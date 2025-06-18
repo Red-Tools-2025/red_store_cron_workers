@@ -1,10 +1,12 @@
 {
+  "type": "module",
   "name": "red_store_cron_workers",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "worker-pos": "node --loader ts-node/esm src/workers/worker-pos.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
@@ -14,6 +16,7 @@
   "devDependencies": {
     "@types/node": "^24.0.3",
     "@types/node-cron": "^3.0.11",
+    "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.8.3"
   },

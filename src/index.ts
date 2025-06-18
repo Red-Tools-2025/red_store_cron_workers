@@ -13,7 +13,9 @@ const posJob = cron.schedule("* * * * * *", () => {
     isWorkerRunning = true;
 
     posJob.stop();
-    const posWorker = spawn("node", ["src/workers/worker-pos.ts"]);
+    const posWorker = spawn("ts-node", ["src/workers/worker-pos.ts"], {
+      shell: true,
+    });
     posWorker.stdout.on("data", (data) => {
       console.log(`POS-WORKER STDOUT : ${data}`);
     });
