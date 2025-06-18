@@ -1,0 +1,27 @@
+# Node dependencies
+node_modules/
+
+# Output directory
+dist/
+
+# Env files
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# IDEs and editors
+.vscode/
+.idea/
+.DS_Store
+
+# OS
+Thumbs.db
+
+# Optional cache
+.pnpm-store/
+.cache/
