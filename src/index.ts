@@ -1,1 +1,5 @@
-console.log("Hello world");
+import cron from "node-cron";
+
+cron.schedule("* * * * * ", () => {
+  console.log("Hi from job");
+});
