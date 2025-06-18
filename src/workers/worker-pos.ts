@@ -3,8 +3,9 @@ import redis from "../lib/redis";
 console.log("worker-pos initiated");
 const redisCheck = async () => {
   console.log("Running Pipeline");
-  const redisRead = await redis.smembers("inv_products:1");
-  console.log(redisRead);
+  const redisQL = await redis.llen("update_queue:1");
+  const redisQD = await redis.lrange("update_queue:1", 0, -1);
+  console.log({ update_queue_len: redisQL, update_queue_data: redisQD });
   console.log("Finished Pipeline");
 };
 
