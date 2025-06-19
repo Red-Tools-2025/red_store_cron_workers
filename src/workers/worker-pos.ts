@@ -9,8 +9,14 @@ console.log("worker-pos initiated");
 const redisCheck = async () => {
   console.log("Running Pipeline");
   try {
-    const redisQL = await redis.llen("update_queue:1");
     const redisQD = await redis.lrange("update_queue:1", 0, -1);
+
+    // This is TX Marking Log that will keep track of failed transactions and prevent removal of log from redis cache for a second attempt next time
+    let redisQDLogStatus: {
+      saleEvent: SaleEvent;
+      tx_status: boolean;
+      raw_key: string;
+    }[] = [];
 
     if (redisQD.length === 0) {
       console.log(`Aborting Worker Job, No Updates for sales`);
@@ -42,6 +48,11 @@ const redisCheck = async () => {
       `Validated Cache logs, Processing ${parsedRedisQD.length} sale events.`
     );
 
+    // Populate TX mark Log
+    redisQDLogStatus = parsedRedisQD.map((e, idx) => {
+      return { saleEvent: e, tx_status: false, raw_key: redisQD[idx] };
+    });
+
     // Updates Queue is processed separately as opposed to sales queue so we can group up similar IDs to reduce transaction load on DB
     // A parsed map accumaltes the delta of those cache logs that belong to the same p_id to reduce transaction load
     const queueMap = new Map<string, number>();
@@ -56,6 +67,7 @@ const redisCheck = async () => {
     }
 
     //Wrapping all QTY updates in a single transaction
+    let transaction_count = 0;
     await pool.query("BEGIN");
     for (const [key, totalDelta] of queueMap) {
       // Split key to get entry attributes
@@ -64,7 +76,7 @@ const redisCheck = async () => {
         const result = await pool.query(
           `UPDATE inventory
            SET quantity = quantity + $1
-           WHERE p_id = $2 AND store_id = $3`,
+           WHERE id = $2 AND store_id = $3`,
           [totalDelta, p_id, storeId]
         );
 
@@ -73,6 +85,21 @@ const redisCheck = async () => {
             `No inventory row found for p_id=${p_id}, storeId=${storeId}`
           );
         }
+
+        // Mark all logs with matching p_id and storeId as processed
+        redisQDLogStatus.forEach((log) => {
+          if (
+            log.saleEvent.p_id === p_id &&
+            log.saleEvent.storeId === storeId
+          ) {
+            log.tx_status = true;
+          }
+        });
+
+        console.log(
+          `Marked TX for store_id:${storeId} inventory count for product:${p_id}`
+        );
+        transaction_count++;
       } catch (updateError) {
         console.error(
           `Failed to update inventory for p_id=${p_id}, error:`,
@@ -81,14 +108,32 @@ const redisCheck = async () => {
       }
     }
     await pool.query("COMMIT");
+    console.log(`Transaction count ${transaction_count}`);
 
     // Filter out products with associated sales events
-    console.log({
-      update_queue_len: redisQL,
-      update_queue_data: redisQD,
-    });
 
     // Clear out processed sales logs
+    const logClearPipeline = redis.pipeline();
+
+    for (const log of redisQDLogStatus) {
+      if (log.tx_status) {
+        logClearPipeline.lrem("update_queue:1", 1, log.raw_key);
+      }
+    }
+
+    const results = await logClearPipeline.exec();
+    console.log(`Removed ${results?.length} processed sale logs from Redis.`);
+
+    redisQDLogStatus.forEach((tx_log) => {
+      if (tx_log.tx_status === false) {
+        console.log(
+          `Failed TX for event:`,
+          tx_log.saleEvent,
+          `, will be scheduled for next task`
+        );
+      }
+    });
+
     console.log("Finished Pipeline");
   } catch (e) {
     console.error("Error while running pipeline", e);
