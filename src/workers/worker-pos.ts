@@ -12,30 +12,38 @@ const redisCheck = async () => {
     const redisQL = await redis.llen("update_queue:1");
     const redisQD = await redis.lrange("update_queue:1", 0, -1);
 
+    if (redisQD.length === 0) {
+      console.log(`Aborting Worker Job, No Updates for sales`);
+      return null;
+    }
+
     // Protection and verification against malformed or corrupted strings
-    const parsedRedisQD: SaleEvent[] = redisQD.map((entry) => {
-      try {
-        if (isValidSaleEvent(entry)) {
-          return JSON.parse(entry);
-        } else {
-          throw new Error(
-            `Malformed Entry detected did not pass type gaurd check: ${entry}`
+    const parsedRedisQD: SaleEvent[] = redisQD
+      .map((entry) => {
+        try {
+          const parsedEntry = JSON.parse(entry);
+          if (isValidSaleEvent(parsedEntry)) {
+            return parsedEntry;
+          } else {
+            throw new Error(
+              `Malformed Entry detected did not pass type gaurd check: ${entry}`
+            );
+          }
+        } catch (e) {
+          console.log(
+            `Ditected Malfomed or illegal cache entry : ${entry}, error details : ${e}`
           );
+          return null;
         }
-      } catch (e) {
-        console.log(
-          `Ditected Malfomed or illegal cache entry : ${entry}, error details : ${e}`
-        );
-        return null;
-      }
-    });
+      })
+      .filter((event): event is SaleEvent => event !== null);
 
     // Map Sales ID
     const saleProductIds = parsedRedisQD.map((event) => event.p_id);
 
     // Define placefolder for filtering on Query level
     const placeholders = saleProductIds.map((_, i) => `$${i + 1}`).join(", ");
-    const query = `SELECT * FROM inventory WHERE store_id = 1 AND p_id IN (${placeholders})`;
+    const query = `SELECT * FROM inventory WHERE store_id = 1 AND id IN (${placeholders})`;
 
     // Fetch relevant products
     const db_current_products = await pool.query(query, saleProductIds);
