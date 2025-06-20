@@ -5,11 +5,12 @@ import redis from "../lib/redis";
 
 import { isValidSaleEvent } from "../utils/typeGaurds";
 
-console.log("worker-pos initiated");
+const queue_key = process.argv[2];
+console.log(`worker-pos initiated for queue_key:${queue_key}`);
 const redisCheck = async () => {
   console.log("Running Pipeline");
   try {
-    const redisQD = await redis.lrange("update_queue:1", 0, -1);
+    const redisQD = await redis.lrange(queue_key, 0, -1);
 
     // This is TX Marking Log that will keep track of failed transactions and prevent removal of log from redis cache for a second attempt next time
     let redisQDLogStatus: {
@@ -117,7 +118,7 @@ const redisCheck = async () => {
 
     for (const log of redisQDLogStatus) {
       if (log.tx_status) {
-        logClearPipeline.lrem("update_queue:1", 1, log.raw_key);
+        logClearPipeline.lrem(queue_key, 1, log.raw_key);
       }
     }
 
